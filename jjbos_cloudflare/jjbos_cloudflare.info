@@ -1,0 +1,5 @@
+name = JJBos Cloudflare GeoIP Redirects
+description = Manages redirects based on cloudflare GeoIP header
+package = JJBOS
+core = 7.x
+version = 7.x-1.0

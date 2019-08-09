@@ -1,0 +1,82 @@
+<?php
+
+/**
+ * @file
+ * Contains module code for JJBos Cloudflate GeoIP Redirects.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function jjbos_cloudflare_menu() {
+  $items['admin/config/regional/jjbos_cloudflare'] = array(
+    'title' => 'JJBos Cloudflate GeoIP Redirects',
+    'description' => 'Manage redirects based on cloudflare GeoIP header.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('jjbos_cloudflare_config_form'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'jjbos_cloudflare.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_page_build().
+ */
+function jjbos_cloudflare_page_build(&$page) {
+  // Don't add redirects to admin pages and for logged in Drupal users.
+  if (path_is_admin(current_path()) || user_is_logged_in()) {
+    return;
+  }
+  $redirects = variable_get('jjbos_cloudflare_redirects', array());
+  $redirects = array_filter($redirects, '_jjbos_cloudflare_valid_redirect');
+  // There is no needs to add script, if redirects list is empty.
+  if (empty($redirects)) {
+    return;
+  }
+  $data = array(
+    'redirects' => $redirects,
+    'script' => variable_get('jjbos_cloudflare_ajax', FALSE) ?
+      '/' . drupal_get_path('module', 'jjbos_cloudflare') . '/jjbos_cloudflare_geoip.php' :
+      '',
+  );
+
+  $redirects_data = 'window._jjbosCloudflare=' . drupal_json_encode($data) . ';';
+  $js_contents = file_get_contents(__DIR__ . '/jjbos_cloudflare_geoip.min.js');
+
+  // To improve performance, added attribute data-cfasync="false" to script elements, which excludes them from CDN aggregation
+  $element1 = array(
+    '#type' => 'markup',
+    '#markup' => '<script type="text/javascript" data-cfasync="false">' . $redirects_data . '</script>',
+    '#weight' => -100,
+  );
+
+  $element2 = array(
+    '#type' => 'markup',
+    '#markup' => '<script type="text/javascript" data-cfasync="false">' . $js_contents . '</script>',
+    '#weight' => -99,
+  );
+
+  drupal_add_html_head($element1, 'jjbos_cloudflare_settings');
+  drupal_add_html_head($element2, 'jjbos_cloudflare_js');
+}
+
+/**
+ * Callback for array_filter().
+ *
+ * Filters for valid URLs, that don't match to the current domain.
+ */
+function _jjbos_cloudflare_valid_redirect($value) {
+  static $preg_host;
+
+  // Prepare and quote host name only once.
+  if (!$preg_host) {
+    $preg_host = preg_quote(preg_replace('/^www\./', '', $_SERVER['HTTP_HOST']));
+  }
+  // Check, that value is valid URL to external host.
+  return valid_url($value, TRUE) && !preg_match(
+    '/^(https?:\/\/)?(www\.)?' . $preg_host . '\/?$/',
+    $value
+  );
+}
